@@ -18,7 +18,7 @@ services:
       retries: 5
 
   ocpp-backend:
-    image: evis_ocpp_emulator-backend:main
+    image: ghcr.io/thesander562/evis_ocpp_emulator-backend:main
     container_name: ocpp-backend
     restart: unless-stopped
     depends_on:
@@ -38,7 +38,7 @@ services:
 
 
   ocpp-ui:
-    image: evis_ocpp_emulator-ui:main
+    image: ghcr.io/thesander562/evis_ocpp_emulator-ui:main
     container_name: ocpp-ui
     restart: unless-stopped
     depends_on:
