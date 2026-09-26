@@ -23,9 +23,9 @@ jobs:
     strategy:
       matrix:
         include:
-          - name: ${{ github.repository }}-backend
+          - name: evis_ocpp_emulator-backend
             context: ./back_end
-          - name: ${{ github.repository }}-ui
+          - name: evis_ocpp_emulator-ui
             context: ./UI
 
     steps:
@@ -49,7 +49,7 @@ jobs:
         id: meta
         uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302  # 6.2.0
         with:
-          images: ${{ env.REGISTRY }}/${{ matrix.name }}
+          images: ${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ matrix.name }}
           tags: |
             # Feature branches
             type=ref,event=branch,enable=${{ github.event_name == 'push' }}
