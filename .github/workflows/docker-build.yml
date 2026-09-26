@@ -29,8 +29,14 @@ jobs:
             context: ./UI
 
     steps:
-      - name: Checkout
+      - name: Checkout code
         uses: actions/checkout@v7
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1  # 4.4.0
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069  # 4.4.1
 
       - name: Log in to Container Registry
         uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f  # 4.6.0
@@ -68,10 +74,13 @@ jobs:
         with:
           context: ${{ matrix.context }}
           target: production
-          platforms: linux/amd64,linux/arm64
           push: true
+          platforms: linux/amd64,linux/arm64
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          provenance: false
 
       - name: Delete untagged image versions
         uses: actions/delete-package-versions@v5
