@@ -23,9 +23,9 @@ jobs:
     strategy:
       matrix:
         include:
-          - name: backend
+          - name: ${{ github.repository }}-backend
             context: ./back_end
-          - name: ui
+          - name: ${{ github.repository }}-ui
             context: ./UI
 
     steps:
