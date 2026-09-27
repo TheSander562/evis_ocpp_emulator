@@ -9,7 +9,14 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       packages: write
+    strategy:
+      matrix:
+        include:
+          - name: evis_ocpp_emulator-backend
+          - name: evis_ocpp_emulator-ui
+
     steps:
       - uses: dataaxiom/ghcr-cleanup-action@v1
         with:
+          packages: ${{ github.repository_owner }}/${{ matrix.name }}
           delete-tags: ${{ github.event.pull_request.head.ref }}
