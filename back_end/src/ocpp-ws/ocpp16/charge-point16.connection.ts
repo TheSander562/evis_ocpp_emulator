@@ -3,7 +3,7 @@ import { RpcClient } from '../core/rpc-client';
 import {
   AuthorizeConf,
   BootNotificationConf,
-  CancelReservationReq,
+  // CancelReservationReq, # Not used
   ChangeAvailabilityReq,
   ChangeConfigurationReq,
   DataTransferConf,
@@ -14,7 +14,7 @@ import {
   MeterValue,
   RemoteStartTransactionReq,
   RemoteStopTransactionReq,
-  ReserveNowReq,
+  // ReserveNowReq, # Not used
   ResetReq,
   SampledValue,
   SendLocalListReq,
@@ -22,7 +22,7 @@ import {
   StartTransactionConf,
   TriggerMessageReq,
   UnlockConnectorReq,
-  UpdateFirmwareReq,
+  // UpdateFirmwareReq, # Not used
 } from './messages';
 
 export interface ChargePoint16Params {
@@ -95,7 +95,11 @@ export class ChargePoint16Connection extends EventEmitter {
     return this.rpc.call('Heartbeat', {});
   }
 
-  statusNotification(connectorId: number, status: string, errorCode = 'NoError') {
+  statusNotification(
+    connectorId: number,
+    status: string,
+    errorCode = 'NoError',
+  ) {
     return this.rpc.call('StatusNotification', {
       connectorId,
       errorCode,
@@ -119,15 +123,12 @@ export class ChargePoint16Connection extends EventEmitter {
     idTag: string,
     meterStart: number,
   ): Promise<number> {
-    const conf = await this.rpc.call<StartTransactionConf>(
-      'StartTransaction',
-      {
-        connectorId,
-        idTag,
-        meterStart: Math.round(meterStart),
-        timestamp: new Date().toISOString(),
-      },
-    );
+    const conf = await this.rpc.call<StartTransactionConf>('StartTransaction', {
+      connectorId,
+      idTag,
+      meterStart: Math.round(meterStart),
+      timestamp: new Date().toISOString(),
+    });
     return conf.transactionId;
   }
 
@@ -176,7 +177,10 @@ export class ChargePoint16Connection extends EventEmitter {
   simulateReject({ boot, authorize }: { boot?: boolean; authorize?: boolean }) {
     if (boot != null) this.rejectBoot = boot;
     if (authorize != null) this.rejectAuthorize = authorize;
-    return { rejectBoot: this.rejectBoot, rejectAuthorize: this.rejectAuthorize };
+    return {
+      rejectBoot: this.rejectBoot,
+      rejectAuthorize: this.rejectAuthorize,
+    };
   }
 
   // --- Lifecycle ---
@@ -251,7 +255,9 @@ export class ChargePoint16Connection extends EventEmitter {
     });
 
     this.rpc.handle('UnlockConnector', (p) => {
-      this.emit('unlock', { connectorId: (p as UnlockConnectorReq).connectorId });
+      this.emit('unlock', {
+        connectorId: (p as UnlockConnectorReq).connectorId,
+      });
       return { status: 'Unlocked' };
     });
 
@@ -336,9 +342,14 @@ export class ChargePoint16Connection extends EventEmitter {
       this.emit('getDiagnostics', req);
       // Asynchronously report upload progress to the CSMS.
       setTimeout(() => {
-        void this.diagnosticsStatusNotification('Uploading').catch(() => undefined);
+        void this.diagnosticsStatusNotification('Uploading').catch(
+          () => undefined,
+        );
         setTimeout(
-          () => void this.diagnosticsStatusNotification('Uploaded').catch(() => undefined),
+          () =>
+            void this.diagnosticsStatusNotification('Uploaded').catch(
+              () => undefined,
+            ),
           1000,
         );
       }, 200);
@@ -348,9 +359,14 @@ export class ChargePoint16Connection extends EventEmitter {
     this.rpc.handle('UpdateFirmware', (p) => {
       this.emit('updateFirmware', p as UpdateFirmwareReq);
       setTimeout(() => {
-        void this.firmwareStatusNotification('Downloading').catch(() => undefined);
+        void this.firmwareStatusNotification('Downloading').catch(
+          () => undefined,
+        );
         setTimeout(
-          () => void this.firmwareStatusNotification('Installed').catch(() => undefined),
+          () =>
+            void this.firmwareStatusNotification('Installed').catch(
+              () => undefined,
+            ),
           1000,
         );
       }, 200);
