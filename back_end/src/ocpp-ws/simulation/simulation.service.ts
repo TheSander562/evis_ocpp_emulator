@@ -73,6 +73,26 @@ export class SimulationService {
       throw new BadRequestException('Charge point is not connected to a CSMS.');
     }
 
+    // Already plugged in via plugIn() — reuse that session and go straight
+    // to Charging instead of creating a second, competing session.
+    if (
+      connector.status === OcppConnectorStatus.Preparing &&
+      connector.currentSessionId
+    ) {
+      const existing = await this.sessions.findOneBy({
+        _id: new ObjectId(connector.currentSessionId),
+      });
+      if (existing && existing.status === SessionStatus.Active) {
+        if (carId && carId !== existing.carId) {
+          existing.carId = carId;
+          await this.sessions.save(existing);
+        }
+        const sessionId = existing.id.toString();
+        await this.beginCharging(key, chargePointId, connectorId, sessionId);
+        return existing;
+      }
+    }
+
     let car: Car | null = null;
     if (carId) {
       car = await this.cars.findOneBy({ _id: new ObjectId(carId) });
@@ -118,6 +138,97 @@ export class SimulationService {
     this.transitions.set(key, { timer, phase: 'preparing' });
 
     this.events.emit(ENGINE_EVENTS.sessionStarted, { sessionId, chargePointId });
+    return session;
+  }
+
+  // Plug a car into a connector WITHOUT starting a charging session — mirrors
+  // a real EV that's been plugged in but not yet authorized to charge.
+  // Sends only StatusNotification(Preparing); no transaction, no meter loop.
+  async plugIn(chargePointId: string, connectorId: number, carId?: string) {
+    const key = this.key(chargePointId, connectorId);
+    if (this.runtimes.has(key) || this.transitions.has(key)) {
+      throw new ConflictException('Connector is already in use.');
+    }
+    const cp = await this.getChargePoint(chargePointId);
+    const connector = cp.connectors.find((c) => c.connectorId === connectorId);
+    if (!connector) {
+      throw new NotFoundException('Connector not found.');
+    }
+    if (connector.currentSessionId) {
+      throw new ConflictException('Connector already has a car plugged in.');
+    }
+    const conn = this.connections.get(chargePointId);
+    if (!conn?.connected) {
+      throw new BadRequestException('Charge point is not connected to a CSMS.');
+    }
+  
+    let car: Car | null = null;
+    if (carId) {
+      car = await this.cars.findOneBy({ _id: new ObjectId(carId) });
+      if (!car) {
+        throw new NotFoundException('Car not found.');
+      }
+      if (!car.connectorTypes.includes(connector.type)) {
+        throw new BadRequestException(
+          `Car is not compatible with a ${connector.type} connector.`,
+        );
+      }
+    }
+  
+    const session = await this.sessions.save(
+      this.sessions.create({
+        chargePointId,
+        connectorId,
+        carId: carId ?? undefined,
+        idTag: cp.idTag,
+        meterStartWh: connector.totalEnergyWh,
+        meterCurrentWh: connector.totalEnergyWh,
+        energyDeliveredWh: 0,
+        status: SessionStatus.Active,
+        startedAt: new Date(),
+        samples: [],
+      }),
+    );
+    const sessionId = session.id.toString();
+  
+    connector.status = OcppConnectorStatus.Preparing;
+    connector.currentSessionId = sessionId;
+    await this.chargePoints.save(cp);
+    await conn
+      .statusNotification(connectorId, OcppConnectorStatus.Preparing)
+      .catch(() => undefined);
+    this.emitConnector(chargePointId, connectorId, connector.status, connector.totalEnergyWh);
+  
+    // Deliberately no setTimeout here — unlike startCharging(), this stays
+    // in Preparing indefinitely until startCharging() or unplug() is called.
+    this.events.emit(ENGINE_EVENTS.sessionStarted, { sessionId, chargePointId });
+    return session;
+  }
+  
+  // Unplug a car that was plugged in via plugIn() but never started charging.
+  // Rolls the connector back to Available without ever running a transaction.
+  async unplug(chargePointId: string, connectorId: number, reason = 'Local') {
+    const key = this.key(chargePointId, connectorId);
+    if (this.runtimes.has(key) || this.transitions.has(key)) {
+      throw new ConflictException(
+        'Connector is charging or mid-transition; use stop instead of unplug.',
+      );
+    }
+    const cp = await this.getChargePoint(chargePointId);
+    const connector = cp.connectors.find((c) => c.connectorId === connectorId);
+    if (!connector) {
+      throw new NotFoundException('Connector not found.');
+    }
+    if (!connector.currentSessionId) {
+      throw new ConflictException('Connector has no car plugged in.');
+    }
+    const session = await this.sessions.findOneBy({
+      _id: new ObjectId(connector.currentSessionId),
+    });
+    if (!session) {
+      throw new NotFoundException('Session not found.');
+    }
+    await this.abortToAvailable(cp, connector, session, reason);
     return session;
   }
 
