@@ -1,4 +1,5 @@
 import {
+  ActionIcon,
   AppShell,
   Burger,
   Button,
@@ -9,6 +10,7 @@ import {
   Stack,
   TextInput,
   Title,
+  Tooltip,
 } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
 import { useForm } from '@mantine/form';
@@ -39,18 +41,33 @@ function LockControl() {
   const form = useForm({ initialValues: { email: '', password: '' } });
 
   if (status.data?.locked) {
+    const logout = () => {
+      token.clear();
+      window.location.reload();
+    };
     return (
-      <Button
-        variant="light"
-        color="gray"
-        leftSection={<IconLogout size={16} />}
-        onClick={() => {
-          token.clear();
-          window.location.reload();
-        }}
-      >
-        Logout
-      </Button>
+      <>
+        <Button
+          visibleFrom="sm"
+          variant="light"
+          color="gray"
+          leftSection={<IconLogout size={16} />}
+          onClick={logout}
+        >
+          Logout
+        </Button>
+        <Tooltip label="Logout" hiddenFrom="sm">
+          <ActionIcon
+            hiddenFrom="sm"
+            variant="light"
+            color="gray"
+            size="lg"
+            onClick={logout}
+          >
+            <IconLogout size={18} />
+          </ActionIcon>
+        </Tooltip>
+      </>
     );
   }
 
@@ -68,12 +85,23 @@ function LockControl() {
   return (
     <>
       <Button
+        visibleFrom="sm"
         variant="light"
         leftSection={<IconLock size={16} />}
         onClick={handlers.open}
       >
         Lock instance
       </Button>
+      <Tooltip label="Lock instance" hiddenFrom="sm">
+        <ActionIcon
+          hiddenFrom="sm"
+          variant="light"
+          size="lg"
+          onClick={handlers.open}
+        >
+          <IconLock size={18} />
+        </ActionIcon>
+      </Tooltip>
       <Modal opened={opened} onClose={handlers.close} title="Lock this instance">
         <form onSubmit={submit}>
           <Stack>
