@@ -27,7 +27,7 @@ import {
   IconTerminal2,
   IconTrash,
 } from '@tabler/icons-react';
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { ChargePointForm } from '../components/ChargePointForm';
 import { CommandModal } from '../components/CommandModal';
 import { OcppLogPanel } from '../components/OcppLogPanel';
@@ -47,7 +47,7 @@ import {
   unplugCar,
 } from '../lib/api';
 import { fmtEnergy, fmtPower } from '../lib/format';
-import { useTick } from '../lib/live';
+import { useTick } from '../lib/useTick';
 import type { Car, ChargePoint, Connector, ConnectorStatus } from '../lib/types';
 
 const STATUS_COLOR: Record<string, string> = {
@@ -92,15 +92,17 @@ function ConnectorRow({
   const qc = useQueryClient();
   const tick = useTick(cp.id, connector.connectorId);
   const [carId, setCarId] = useState<string | null>(connector.carId ?? null);
-  const charging = connector.status === 'Charging';
-  const plugged = connector.status === 'Preparing';
-
-  // Keep the local selection in sync with the server-persisted carId —
+  // Track the last server value we've seen so we can adjust `carId` during
+  // render (not in an effect) whenever the server's carId actually changes —
   // this is what makes the selected car survive a page refresh, since the
   // connector (and its carId) come back from the API on every refetch.
-  useEffect(() => {
+  const [lastServerCarId, setLastServerCarId] = useState(connector.carId ?? null);
+  if ((connector.carId ?? null) !== lastServerCarId) {
+    setLastServerCarId(connector.carId ?? null);
     setCarId(connector.carId ?? null);
-  }, [connector.carId]);
+  }
+  const charging = connector.status === 'Charging';
+  const plugged = connector.status === 'Preparing';
 
   const plug = useMutation({
     mutationFn: (id: string) => plugCar(cp.id, connector.connectorId, id),
