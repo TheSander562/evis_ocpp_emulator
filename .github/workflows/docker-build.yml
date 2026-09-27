@@ -3,6 +3,11 @@ name: Build and push Docker images
 on:
   push:
     branches: ['**']
+    paths:
+      - 'back_end/**'
+      - '!back_end/**.md'
+      - 'UI/**'
+      - '!UI/**.md'
   workflow_dispatch:
   release:
     types: [published]
