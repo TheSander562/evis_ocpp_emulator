@@ -27,7 +27,7 @@ import {
   IconTerminal2,
   IconTrash,
 } from '@tabler/icons-react';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { ChargePointForm } from '../components/ChargePointForm';
 import { CommandModal } from '../components/CommandModal';
 import { OcppLogPanel } from '../components/OcppLogPanel';
@@ -40,9 +40,11 @@ import {
   listCars,
   listChargePoints,
   ocppCall,
+  plugCar,
   simulateReject,
   startCharging,
   stopCharging,
+  unplugCar,
 } from '../lib/api';
 import { fmtEnergy, fmtPower } from '../lib/format';
 import { useTick } from '../lib/live';
@@ -89,9 +91,40 @@ function ConnectorRow({
 }) {
   const qc = useQueryClient();
   const tick = useTick(cp.id, connector.connectorId);
-  const [carId, setCarId] = useState<string | null>(null);
+  const [carId, setCarId] = useState<string | null>(connector.carId ?? null);
   const charging = connector.status === 'Charging';
+  const plugged = connector.status === 'Preparing';
 
+  // Keep the local selection in sync with the server-persisted carId —
+  // this is what makes the selected car survive a page refresh, since the
+  // connector (and its carId) come back from the API on every refetch.
+  useEffect(() => {
+    setCarId(connector.carId ?? null);
+  }, [connector.carId]);
+
+  const plug = useMutation({
+    mutationFn: (id: string) => plugCar(cp.id, connector.connectorId, id),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['charge-points'] }),
+    onError: (e: { response?: { data?: { message?: string } } }) => {
+      setCarId(null);
+      notifications.show({
+        color: 'red',
+        message: e.response?.data?.message ?? 'Could not plug in car',
+      });
+    },
+  });
+  const unplug = useMutation({
+    mutationFn: () => unplugCar(cp.id, connector.connectorId),
+    onSuccess: () => {
+      setCarId(null);
+      qc.invalidateQueries({ queryKey: ['charge-points'] });
+    },
+    onError: (e: { response?: { data?: { message?: string } } }) =>
+      notifications.show({
+        color: 'red',
+        message: e.response?.data?.message ?? 'Could not unplug car',
+      }),
+  });
   const start = useMutation({
     mutationFn: () => startCharging(cp.id, connector.connectorId, carId ?? undefined),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['charge-points'] }),
@@ -103,7 +136,10 @@ function ConnectorRow({
   });
   const stop = useMutation({
     mutationFn: () => stopCharging(cp.id, connector.connectorId),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['charge-points'] }),
+    onSuccess: () => {
+      setCarId(null);
+      qc.invalidateQueries({ queryKey: ['charge-points'] });
+    },
   });
   const [statusOpen, statusHandlers] = useDisclosure(false);
   const [pendingStatus, setPendingStatus] = useState<ConnectorStatus>('Available');
@@ -201,26 +237,43 @@ function ConnectorRow({
             </Button>
           </Group>
         </Stack>
-      ) : cp.online ? (
-        <Group>
-          <Select
-            placeholder={compatible.length ? 'Select a car' : 'No compatible car'}
-            data={compatible.map((c) => ({ value: c.id, label: c.name }))}
-            value={carId}
-            onChange={setCarId}
-            size="sm"
-            style={{ flex: 1 }}
-            disabled={!compatible.length}
-          />
-          <Button
-            size="sm"
-            leftSection={<IconPlayerPlay size={16} />}
-            loading={start.isPending}
-            onClick={() => start.mutate()}
-          >
-            Start
-          </Button>
+      ) : plugged ? (
+        <Group justify="space-between">
+          <Text size="sm">
+            {(carId && cars.find((c) => c.id === carId)?.name) ?? 'Car'} plugged in
+          </Text>
+          <Group gap="xs">
+            <Button
+              size="compact-sm"
+              variant="light"
+              color="gray"
+              loading={unplug.isPending}
+              onClick={() => unplug.mutate()}
+            >
+              Unplug
+            </Button>
+            <Button
+              size="compact-sm"
+              leftSection={<IconPlayerPlay size={16} />}
+              loading={start.isPending}
+              onClick={() => start.mutate()}
+            >
+              Start
+            </Button>
+          </Group>
         </Group>
+      ) : cp.online ? (
+        <Select
+          placeholder={compatible.length ? 'Select a car to plug in' : 'No compatible car'}
+          data={compatible.map((c) => ({ value: c.id, label: c.name }))}
+          value={carId}
+          onChange={(value) => {
+            setCarId(value);
+            if (value) plug.mutate(value);
+          }}
+          size="sm"
+          disabled={!compatible.length || plug.isPending}
+        />
       ) : (
         <Text size="sm" c="dimmed">
           Connect the charge point to start charging.
