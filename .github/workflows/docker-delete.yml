@@ -18,5 +18,5 @@ jobs:
     steps:
       - uses: dataaxiom/ghcr-cleanup-action@v1
         with:
-          packages: ${{ github.repository_owner }}/${{ matrix.name }}
+          packages: ${{ matrix.name }}
           delete-tags: ${{ github.event.pull_request.head.ref }}
