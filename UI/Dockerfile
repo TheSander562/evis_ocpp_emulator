@@ -29,5 +29,8 @@ ENV NODE_ENV=production
 COPY --from=build /app/node_modules ./node_modules
 COPY --from=build /app/dist ./dist
 COPY package.json vite.config.ts ./
+COPY docker-entrypoint.sh /docker-entrypoint.sh
+RUN chmod +x /docker-entrypoint.sh
 EXPOSE 5173
+ENTRYPOINT ["/docker-entrypoint.sh"]
 CMD ["yarn", "preview", "--host", "0.0.0.0", "--port", "5173"]
