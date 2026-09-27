@@ -15,9 +15,7 @@ type PendingCall = {
   timer: NodeJS.Timeout;
 };
 
-export type IncomingCallHandler = (
-  payload: unknown,
-) => Promise<unknown> | unknown;
+export type IncomingCallHandler = (payload: unknown) => unknown;
 
 export interface FrameEvent {
   direction: 'in' | 'out';
@@ -95,7 +93,7 @@ export class RpcClient extends EventEmitter {
       }, this.opts.callTimeoutMs);
       this.pending.set(messageId, {
         action,
-        resolve: resolve as (value: unknown) => void,
+        resolve: resolve,
         reject,
         timer,
       });
@@ -111,9 +109,14 @@ export class RpcClient extends EventEmitter {
       this.reconnectAttempts = 0;
       this.emit('open');
     });
-    ws.on('message', (data: WebSocket.RawData) =>
-      this.onMessage(data.toString()),
-    );
+    ws.on('message', (data: WebSocket.RawData) => {
+      const text = Array.isArray(data)
+        ? Buffer.concat(data).toString()
+        : Buffer.isBuffer(data)
+          ? data.toString()
+          : Buffer.from(data).toString();
+      this.onMessage(text);
+    });
     ws.on('error', (err) => this.emit('error', err));
     ws.on('close', () => {
       this.ws = undefined;
@@ -151,7 +154,13 @@ export class RpcClient extends EventEmitter {
       case MessageType.CALLRESULT: {
         const [, messageId, payload] = msg;
         const action = this.pending.get(messageId)?.action ?? '';
-        this.emitFrame('in', MessageType.CALLRESULT, action, messageId, payload);
+        this.emitFrame(
+          'in',
+          MessageType.CALLRESULT,
+          action,
+          messageId,
+          payload,
+        );
         this.settle(messageId, (p) => p.resolve(payload));
         break;
       }
@@ -198,7 +207,13 @@ export class RpcClient extends EventEmitter {
     }
     try {
       const result = await handler(payload);
-      this.emitFrame('out', MessageType.CALLRESULT, action, messageId, result ?? {});
+      this.emitFrame(
+        'out',
+        MessageType.CALLRESULT,
+        action,
+        messageId,
+        result ?? {},
+      );
       this.send([MessageType.CALLRESULT, messageId, result ?? {}]);
     } catch (err) {
       this.emitFrame('out', MessageType.CALLERROR, action, messageId, {

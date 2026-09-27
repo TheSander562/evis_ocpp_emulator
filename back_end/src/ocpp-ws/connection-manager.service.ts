@@ -12,6 +12,7 @@ import {
   ChangeConfigurationReq,
   RemoteStartTransactionReq,
   RemoteStopTransactionReq,
+  TriggerMessageReq,
 } from './ocpp16/messages';
 import { ChargePoint16Connection } from './ocpp16/charge-point16.connection';
 
@@ -70,6 +71,7 @@ export class ConnectionManager {
     conn.on('boot', () => {
       this.logger.log(`Charge point ${id} booted (online)`);
       void this.setStatus(id, ChargePointStatus.Online);
+      void this.syncConnectorStatuses(id, conn);
     });
     conn.on('bootRejected', (status: string) => {
       // Don't reconnect into a rejection loop — that spawns phantom devices
@@ -96,6 +98,31 @@ export class ConnectionManager {
     conn.on('configChanged', (e: ChangeConfigurationReq) =>
       void this.persistConfig(id, e.key, e.value),
     );
+    conn.on('trigger', (e: TriggerMessageReq) => {
+      if (e.requestedMessage === 'StatusNotification') {
+        void this.syncConnectorStatuses(id, conn, e.connectorId);
+      }
+    });
+  }
+
+  private async syncConnectorStatuses(
+    id: string,
+    conn: ChargePoint16Connection,
+    connectorId?: number,
+  ) {
+    const cp = await this.chargePoints.findOneBy({ _id: new ObjectId(id) });
+    if (!cp) return;
+
+    const connectors =
+      connectorId == null
+        ? cp.connectors
+        : cp.connectors.filter((c) => c.connectorId === connectorId);
+
+    for (const connector of connectors) {
+      await conn
+        .statusNotification(connector.connectorId, connector.status)
+        .catch(() => undefined);
+    }
   }
 
   private async setStatus(id: string, status: ChargePointStatus) {

@@ -1,16 +1,7 @@
 import { useQueryClient } from '@tanstack/react-query';
-import {
-  createContext,
-  useContext,
-  useEffect,
-  useState,
-  type ReactNode,
-} from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
+import { LiveContext, type Ticks } from './live-context';
 import { ENGINE_EVENTS, socket, type SessionTick } from './socket';
-
-type Ticks = Record<string, SessionTick>;
-
-const LiveContext = createContext<Ticks>({});
 
 export function LiveProvider({ children }: { children: ReactNode }) {
   const queryClient = useQueryClient();
@@ -41,6 +32,3 @@ export function LiveProvider({ children }: { children: ReactNode }) {
 
   return <LiveContext.Provider value={ticks}>{children}</LiveContext.Provider>;
 }
-
-export const useTick = (chargePointId: string, connectorId: number) =>
-  useContext(LiveContext)[`${chargePointId}:${connectorId}`];

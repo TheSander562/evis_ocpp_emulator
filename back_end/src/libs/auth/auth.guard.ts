@@ -38,7 +38,8 @@ export class OptionalJwtAuthGuard implements CanActivate {
     }
 
     try {
-      request['user'] = await this.jwt.verifyAsync(token);
+      const payload: unknown = await this.jwt.verifyAsync(token);
+      request['user'] = payload;
       return true;
     } catch {
       throw new UnauthorizedException();

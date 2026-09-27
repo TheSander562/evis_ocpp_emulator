@@ -62,6 +62,23 @@ export class ChargePointsController {
     return this.chargePoints.disconnect(id);
   }
 
+  @Post(':id/connectors/:connectorId/plug')
+  plugIn(
+    @Param('id') id: string,
+    @Param('connectorId', ParseIntPipe) connectorId: number,
+    @Body() dto: StartChargingDto,
+  ) {
+    return this.simulation.plugIn(id, connectorId, dto.carId);
+  }
+  
+  @Post(':id/connectors/:connectorId/unplug')
+  unplug(
+    @Param('id') id: string,
+    @Param('connectorId', ParseIntPipe) connectorId: number,
+  ) {
+    return this.simulation.unplug(id, connectorId);
+  }
+
   @Post(':id/connectors/:connectorId/start')
   startCharging(
     @Param('id') id: string,

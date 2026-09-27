@@ -73,6 +73,26 @@ export class SimulationService {
       throw new BadRequestException('Charge point is not connected to a CSMS.');
     }
 
+    // Already plugged in via plugIn() — reuse that session and go straight
+    // to Charging instead of creating a second, competing session.
+    if (
+      connector.status === OcppConnectorStatus.Preparing &&
+      connector.currentSessionId
+    ) {
+      const existing = await this.sessions.findOneBy({
+        _id: new ObjectId(connector.currentSessionId),
+      });
+      if (existing && existing.status === SessionStatus.Active) {
+        if (carId && carId !== existing.carId) {
+          existing.carId = carId;
+          await this.sessions.save(existing);
+        }
+        const sessionId = existing.id.toString();
+        await this.beginCharging(key, chargePointId, connectorId, sessionId);
+        return existing;
+      }
+    }
+
     let car: Car | null = null;
     if (carId) {
       car = await this.cars.findOneBy({ _id: new ObjectId(carId) });
@@ -105,6 +125,7 @@ export class SimulationService {
     // Enter Preparing (plug-in / handshake) before charging actually begins.
     connector.status = OcppConnectorStatus.Preparing;
     connector.currentSessionId = sessionId;
+    connector.carId = carId;
     await this.chargePoints.save(cp);
     await conn
       .statusNotification(connectorId, OcppConnectorStatus.Preparing)
@@ -118,6 +139,98 @@ export class SimulationService {
     this.transitions.set(key, { timer, phase: 'preparing' });
 
     this.events.emit(ENGINE_EVENTS.sessionStarted, { sessionId, chargePointId });
+    return session;
+  }
+
+  // Plug a car into a connector WITHOUT starting a charging session — mirrors
+  // a real EV that's been plugged in but not yet authorized to charge.
+  // Sends only StatusNotification(Preparing); no transaction, no meter loop.
+  async plugIn(chargePointId: string, connectorId: number, carId?: string) {
+    const key = this.key(chargePointId, connectorId);
+    if (this.runtimes.has(key) || this.transitions.has(key)) {
+      throw new ConflictException('Connector is already in use.');
+    }
+    const cp = await this.getChargePoint(chargePointId);
+    const connector = cp.connectors.find((c) => c.connectorId === connectorId);
+    if (!connector) {
+      throw new NotFoundException('Connector not found.');
+    }
+    if (connector.currentSessionId) {
+      throw new ConflictException('Connector already has a car plugged in.');
+    }
+    const conn = this.connections.get(chargePointId);
+    if (!conn?.connected) {
+      throw new BadRequestException('Charge point is not connected to a CSMS.');
+    }
+
+    let car: Car | null = null;
+    if (carId) {
+      car = await this.cars.findOneBy({ _id: new ObjectId(carId) });
+      if (!car) {
+        throw new NotFoundException('Car not found.');
+      }
+      if (!car.connectorTypes.includes(connector.type)) {
+        throw new BadRequestException(
+          `Car is not compatible with a ${connector.type} connector.`,
+        );
+      }
+    }
+
+    const session = await this.sessions.save(
+      this.sessions.create({
+        chargePointId,
+        connectorId,
+        carId: carId ?? undefined,
+        idTag: cp.idTag,
+        meterStartWh: connector.totalEnergyWh,
+        meterCurrentWh: connector.totalEnergyWh,
+        energyDeliveredWh: 0,
+        status: SessionStatus.Active,
+        startedAt: new Date(),
+        samples: [],
+      }),
+    );
+    const sessionId = session.id.toString();
+
+    connector.status = OcppConnectorStatus.Preparing;
+    connector.currentSessionId = sessionId;
+    connector.carId = carId;
+    await this.chargePoints.save(cp);
+    await conn
+      .statusNotification(connectorId, OcppConnectorStatus.Preparing)
+      .catch(() => undefined);
+    this.emitConnector(chargePointId, connectorId, connector.status, connector.totalEnergyWh);
+
+    // Deliberately no setTimeout here — unlike startCharging(), this stays
+    // in Preparing indefinitely until startCharging() or unplug() is called.
+    this.events.emit(ENGINE_EVENTS.sessionStarted, { sessionId, chargePointId });
+    return session;
+  }
+
+  // Unplug a car that was plugged in via plugIn() but never started charging.
+  // Rolls the connector back to Available without ever running a transaction.
+  async unplug(chargePointId: string, connectorId: number, reason = 'Local') {
+    const key = this.key(chargePointId, connectorId);
+    if (this.runtimes.has(key) || this.transitions.has(key)) {
+      throw new ConflictException(
+        'Connector is charging or mid-transition; use stop instead of unplug.',
+      );
+    }
+    const cp = await this.getChargePoint(chargePointId);
+    const connector = cp.connectors.find((c) => c.connectorId === connectorId);
+    if (!connector) {
+      throw new NotFoundException('Connector not found.');
+    }
+    if (!connector.currentSessionId) {
+      throw new ConflictException('Connector has no car plugged in.');
+    }
+    const session = await this.sessions.findOneBy({
+      _id: new ObjectId(connector.currentSessionId),
+    });
+    if (!session) {
+      throw new NotFoundException('Session not found.');
+    }
+    await this.abortToAvailable(cp, connector, session, reason);
     return session;
   }
 
@@ -163,6 +276,7 @@ export class SimulationService {
     await this.sessions.save(session);
 
     connector.status = OcppConnectorStatus.Charging;
+    connector.carId = session.carId;
     await this.chargePoints.save(cp);
     await conn
       ?.statusNotification(connectorId, OcppConnectorStatus.Charging)
@@ -227,6 +341,7 @@ export class SimulationService {
 
     connector.status = OcppConnectorStatus.Available;
     connector.currentSessionId = undefined;
+    connector.carId = undefined;
     await this.chargePoints.save(cp);
     const conn = this.connections.get(cp.id.toString());
     await conn
@@ -363,26 +478,49 @@ export class SimulationService {
       _id: new ObjectId(rt.chargePointId),
     });
     const connector = cp?.connectors.find((c) => c.connectorId === rt.connectorId);
-    if (cp && connector) {
-      // Enter Finishing (unplugging) before returning to Available.
+    const conn = this.connections.get(rt.chargePointId);
+
+    if (cp && connector && reason !== 'Remote') {
+      // Local stops enter Finishing before returning to Available.
       connector.status = OcppConnectorStatus.Finishing;
       await this.chargePoints.save(cp);
-      this.emitConnector(rt.chargePointId, rt.connectorId, connector.status, connector.totalEnergyWh);
+      this.emitConnector(
+        rt.chargePointId,
+        rt.connectorId,
+        connector.status,
+        connector.totalEnergyWh,
+      );
     }
-
-    const conn = this.connections.get(rt.chargePointId);
     await conn
       ?.stopTransaction(rt.transactionId, session?.meterCurrentWh ?? 0, reason)
       .catch(() => undefined);
-    await conn
-      ?.statusNotification(rt.connectorId, OcppConnectorStatus.Finishing)
-      .catch(() => undefined);
 
-    const timer = setTimeout(
-      () => void this.finishConnector(key, rt.chargePointId, rt.connectorId),
-      FINISHING_MS,
-    );
-    this.transitions.set(key, { timer, phase: 'finishing' });
+    // A remote stop ends the OCPP transaction, but does not imply that the
+    // EV was unplugged. Keep the physical connection represented as Preparing
+    // until the simulator explicitly receives an unplug action.
+    if (reason === 'Remote' && cp && connector) {
+      connector.status = OcppConnectorStatus.Preparing;
+      // Keep currentSessionId/carId so reconnects and unplug() can see the EV.
+      await this.chargePoints.save(cp);
+      await conn
+        ?.statusNotification(rt.connectorId, OcppConnectorStatus.Preparing)
+        .catch(() => undefined);
+      this.emitConnector(
+        rt.chargePointId,
+        rt.connectorId,
+        connector.status,
+        connector.totalEnergyWh,
+      );
+    } else {
+      await conn
+        ?.statusNotification(rt.connectorId, OcppConnectorStatus.Finishing)
+        .catch(() => undefined);
+      const timer = setTimeout(
+        () => void this.finishConnector(key, rt.chargePointId, rt.connectorId),
+        FINISHING_MS,
+      );
+      this.transitions.set(key, { timer, phase: 'finishing' });
+    }
 
     this.events.emit(ENGINE_EVENTS.sessionEnded, {
       sessionId: rt.sessionId,
@@ -406,6 +544,7 @@ export class SimulationService {
     if (!cp || !connector) return;
     connector.status = OcppConnectorStatus.Available;
     connector.currentSessionId = undefined;
+    connector.carId = undefined;
     await this.chargePoints.save(cp);
     const conn = this.connections.get(chargePointId);
     await conn
@@ -456,6 +595,7 @@ export class SimulationService {
     connector.status = status;
     if (status === OcppConnectorStatus.Available) {
       connector.currentSessionId = undefined;
+      connector.carId = undefined;
     }
     await this.chargePoints.save(cp);
 

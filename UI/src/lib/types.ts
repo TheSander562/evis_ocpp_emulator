@@ -28,6 +28,7 @@ export interface Connector {
   status: ConnectorStatus;
   totalEnergyWh: number;
   currentSessionId?: string | null;
+  carId?: string | null;
 }
 
 export interface ChargePoint {

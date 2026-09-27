@@ -15,7 +15,43 @@ env:
   REGISTRY: ghcr.io
 
 jobs:
+  lint:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - name: backend
+            dir: ./back_end
+            pm: pnpm
+          - name: ui
+            dir: ./UI
+            pm: yarn
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Enable Corepack
+        run: corepack enable
+
+      - name: Install dependencies
+        working-directory: ${{ matrix.dir }}
+        run: ${{ matrix.pm }} install --frozen-lockfile
+
+      - name: Lint
+        working-directory: ${{ matrix.dir }}
+        run: ${{ matrix.pm }} run lint
+
+      - name: Type check
+        working-directory: ${{ matrix.dir }}
+        run: npx tsc --noEmit -p ${{ matrix.name == 'ui' && 'tsconfig.app.json' || 'tsconfig.json' }}
+
   build:
+    needs: lint
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -82,10 +118,10 @@ jobs:
           cache-to: type=gha,mode=max
           provenance: false
 
+      # Multi arch not working with actions/delete-package-versions@v5
       - name: Delete untagged image versions
-        uses: actions/delete-package-versions@v5
+        uses: dataaxiom/ghcr-cleanup-action@v1
         with:
-          package-name: ${{ matrix.name }}
-          package-type: container
-          min-versions-to-keep: 0
-          delete-only-untagged-versions: true
+          package: ${{ matrix.name }}
+          delete-untagged: true
+          validate: true

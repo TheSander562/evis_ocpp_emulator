@@ -31,7 +31,7 @@ export function CommandModal({
   loading?: boolean;
 }) {
   const send = () => {
-    let parsed: Record<string, unknown> = {};
+    let parsed: Record<string, unknown>;
     try {
       parsed = payload.trim() ? JSON.parse(payload) : {};
     } catch {
