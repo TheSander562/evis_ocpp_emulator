@@ -47,7 +47,7 @@ import {
   unplugCar,
 } from '../lib/api';
 import { fmtEnergy, fmtPower } from '../lib/format';
-import { useTick } from '../lib/useTick';
+import { useTick } from '../lib/live-context';
 import type { Car, ChargePoint, Connector, ConnectorStatus } from '../lib/types';
 
 const STATUS_COLOR: Record<string, string> = {

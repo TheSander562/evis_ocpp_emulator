@@ -1,4 +1,4 @@
-import { createContext } from 'react';
+import { createContext, useContext } from 'react';
 import type { SessionTick } from './socket';
 
 export type Ticks = Record<string, SessionTick>;
