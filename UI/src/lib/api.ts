@@ -47,6 +47,10 @@ export const connectChargePoint = (id: string) =>
   api.post(`/charge-points/${id}/connect`).then((r) => r.data);
 export const disconnectChargePoint = (id: string) =>
   api.post(`/charge-points/${id}/disconnect`).then((r) => r.data);
+export const plugCar = (id: string, connectorId: number, carId: string) =>
+  api.post(`/charge-points/${id}/connectors/${connectorId}/plug`, { carId }).then((r) => r.data);
+export const unplugCar = (id: string, connectorId: number) =>
+  api.post(`/charge-points/${id}/connectors/${connectorId}/unplug`).then((r) => r.data);
 export const startCharging = (id: string, connectorId: number, carId?: string) =>
   api.post(`/charge-points/${id}/connectors/${connectorId}/start`, { carId }).then((r) => r.data);
 export const stopCharging = (id: string, connectorId: number) =>
