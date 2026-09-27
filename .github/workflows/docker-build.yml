@@ -82,10 +82,10 @@ jobs:
           cache-to: type=gha,mode=max
           provenance: false
 
-      - name: Delete untagged image versions
-        uses: actions/delete-package-versions@v5
-        with:
-          package-name: ${{ matrix.name }}
-          package-type: container
-          min-versions-to-keep: 0
-          delete-only-untagged-versions: true
+      #- name: Delete untagged image versions
+      #  uses: actions/delete-package-versions@v5
+      #  with:
+      #    package-name: ${{ matrix.name }}
+      #    package-type: container
+      #    min-versions-to-keep: 0
+      #    delete-only-untagged-versions: true
