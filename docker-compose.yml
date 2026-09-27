@@ -10,7 +10,8 @@ services:
     ports:
       - '${MONGO_PORT:-27017}:27017'
     volumes:
-      - mongo_data:/data/db
+      - mongo_data:/data/db # Persist MongoDB data
+      - mongo_config:/data/configdb # Persist MongoDB configuration
     healthcheck:
       test: ['CMD', 'mongosh', '--eval', "db.adminCommand('ping')"]
       interval: 10s
@@ -51,5 +52,6 @@ services:
 
 volumes:
   mongo_data:
+  mongo_config:
   ocpp-back_end_data:
   ocpp-ui_data:
