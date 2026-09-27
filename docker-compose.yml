@@ -1,6 +1,6 @@
 services:
   ocpp-mongodb:
-    image: mongo:7
+    image: mongo:8.3
     container_name: ocpp-mongodb
     restart: unless-stopped
     environment:
