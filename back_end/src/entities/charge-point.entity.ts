@@ -13,6 +13,7 @@ export interface Connector {
   status: OcppConnectorStatus;
   totalEnergyWh: number;
   currentSessionId?: string;
+  carId?: string;
 }
 
 @Entity({ name: 'charge_points' })
