@@ -23,11 +23,14 @@ import {
   IconLock,
   IconLogout,
 } from '@tabler/icons-react';
+import { useEffect } from 'react';
 import { Link, Route, Routes, useLocation } from 'react-router-dom';
 import { getAuthStatus, register, token } from './lib/api';
 import { CarsPage } from './pages/CarsPage';
 import { ChargePointsPage } from './pages/ChargePointsPage';
 import { SessionsPage } from './pages/SessionsPage';
+
+const SITE_TITLE = 'EVIS OCPP Emulator';
 
 const NAV = [
   { to: '/', label: 'Charge Points', icon: IconBolt },
@@ -123,6 +126,11 @@ export default function App() {
   const location = useLocation();
   const [mobileOpened, { toggle: toggleMobile, close: closeMobile }] =
     useDisclosure(false);
+
+  useEffect(() => {
+    const current = NAV.find((item) => item.to === location.pathname);
+    document.title = current ? `${current.label} | ${SITE_TITLE}` : SITE_TITLE;
+  }, [location.pathname]);
 
   return (
     <AppShell
