@@ -125,6 +125,7 @@ export class SimulationService {
     // Enter Preparing (plug-in / handshake) before charging actually begins.
     connector.status = OcppConnectorStatus.Preparing;
     connector.currentSessionId = sessionId;
+    connector.carId = carId;
     await this.chargePoints.save(cp);
     await conn
       .statusNotification(connectorId, OcppConnectorStatus.Preparing)
@@ -161,7 +162,7 @@ export class SimulationService {
     if (!conn?.connected) {
       throw new BadRequestException('Charge point is not connected to a CSMS.');
     }
-  
+
     let car: Car | null = null;
     if (carId) {
       car = await this.cars.findOneBy({ _id: new ObjectId(carId) });
@@ -174,7 +175,7 @@ export class SimulationService {
         );
       }
     }
-  
+
     const session = await this.sessions.save(
       this.sessions.create({
         chargePointId,
@@ -190,21 +191,22 @@ export class SimulationService {
       }),
     );
     const sessionId = session.id.toString();
-  
+
     connector.status = OcppConnectorStatus.Preparing;
     connector.currentSessionId = sessionId;
+    connector.carId = carId;
     await this.chargePoints.save(cp);
     await conn
       .statusNotification(connectorId, OcppConnectorStatus.Preparing)
       .catch(() => undefined);
     this.emitConnector(chargePointId, connectorId, connector.status, connector.totalEnergyWh);
-  
+
     // Deliberately no setTimeout here — unlike startCharging(), this stays
     // in Preparing indefinitely until startCharging() or unplug() is called.
     this.events.emit(ENGINE_EVENTS.sessionStarted, { sessionId, chargePointId });
     return session;
   }
-  
+
   // Unplug a car that was plugged in via plugIn() but never started charging.
   // Rolls the connector back to Available without ever running a transaction.
   async unplug(chargePointId: string, connectorId: number, reason = 'Local') {
@@ -274,6 +276,7 @@ export class SimulationService {
     await this.sessions.save(session);
 
     connector.status = OcppConnectorStatus.Charging;
+    connector.carId = session.carId;
     await this.chargePoints.save(cp);
     await conn
       ?.statusNotification(connectorId, OcppConnectorStatus.Charging)
@@ -338,6 +341,7 @@ export class SimulationService {
 
     connector.status = OcppConnectorStatus.Available;
     connector.currentSessionId = undefined;
+    connector.carId = undefined;
     await this.chargePoints.save(cp);
     const conn = this.connections.get(cp.id.toString());
     await conn
@@ -517,6 +521,7 @@ export class SimulationService {
     if (!cp || !connector) return;
     connector.status = OcppConnectorStatus.Available;
     connector.currentSessionId = undefined;
+    connector.carId = undefined;
     await this.chargePoints.save(cp);
     const conn = this.connections.get(chargePointId);
     await conn
@@ -567,6 +572,7 @@ export class SimulationService {
     connector.status = status;
     if (status === OcppConnectorStatus.Available) {
       connector.currentSessionId = undefined;
+      connector.carId = undefined;
     }
     await this.chargePoints.save(cp);
 
