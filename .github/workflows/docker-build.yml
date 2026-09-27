@@ -15,7 +15,43 @@ env:
   REGISTRY: ghcr.io
 
 jobs:
+  lint:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - name: backend
+            dir: ./back_end
+            pm: pnpm
+          - name: ui
+            dir: ./UI
+            pm: yarn
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Enable Corepack
+        run: corepack enable
+
+      - name: Install dependencies
+        working-directory: ${{ matrix.dir }}
+        run: ${{ matrix.pm }} install --frozen-lockfile
+
+      - name: Lint
+        working-directory: ${{ matrix.dir }}
+        run: ${{ matrix.pm }} run lint
+
+      - name: Type check
+        working-directory: ${{ matrix.dir }}
+        run: npx tsc --noEmit -p ${{ matrix.name == 'ui' && 'tsconfig.app.json' || 'tsconfig.json' }}
+
   build:
+    needs: lint
     runs-on: ubuntu-latest
     permissions:
       contents: read
