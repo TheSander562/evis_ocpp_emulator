@@ -1,5 +1,6 @@
 import {
   AppShell,
+  Burger,
   Button,
   Group,
   Modal,
@@ -92,15 +93,28 @@ function LockControl() {
 
 export default function App() {
   const location = useLocation();
+  const [mobileOpened, { toggle: toggleMobile, close: closeMobile }] =
+    useDisclosure(false);
+
   return (
     <AppShell
       header={{ height: 60 }}
-      navbar={{ width: 240, breakpoint: 'sm' }}
+      navbar={{
+        width: 240,
+        breakpoint: 'sm',
+        collapsed: { mobile: !mobileOpened },
+      }}
       padding="md"
     >
       <AppShell.Header>
         <Group h="100%" px="md" justify="space-between">
           <Group gap="xs">
+            <Burger
+              opened={mobileOpened}
+              onClick={toggleMobile}
+              hiddenFrom="sm"
+              size="sm"
+            />
             <IconBolt color="var(--mantine-color-yellow-6)" />
             <Title order={4}>EVIS OCPP Emulator</Title>
           </Group>
@@ -116,6 +130,7 @@ export default function App() {
             label={item.label}
             active={location.pathname === item.to}
             leftSection={<item.icon size={18} />}
+            onClick={closeMobile}
           />
         ))}
       </AppShell.Navbar>
