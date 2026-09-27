@@ -32,6 +32,3 @@ export function LiveProvider({ children }: { children: ReactNode }) {
 
   return <LiveContext.Provider value={ticks}>{children}</LiveContext.Provider>;
 }
-
-export const useTick = (chargePointId: string, connectorId: number) =>
-  useContext(LiveContext)[`${chargePointId}:${connectorId}`];
