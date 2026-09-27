@@ -478,26 +478,49 @@ export class SimulationService {
       _id: new ObjectId(rt.chargePointId),
     });
     const connector = cp?.connectors.find((c) => c.connectorId === rt.connectorId);
-    if (cp && connector) {
-      // Enter Finishing (unplugging) before returning to Available.
+    const conn = this.connections.get(rt.chargePointId);
+
+    if (cp && connector && reason !== 'Remote') {
+      // Local stops enter Finishing before returning to Available.
       connector.status = OcppConnectorStatus.Finishing;
       await this.chargePoints.save(cp);
-      this.emitConnector(rt.chargePointId, rt.connectorId, connector.status, connector.totalEnergyWh);
+      this.emitConnector(
+        rt.chargePointId,
+        rt.connectorId,
+        connector.status,
+        connector.totalEnergyWh,
+      );
     }
-
-    const conn = this.connections.get(rt.chargePointId);
     await conn
       ?.stopTransaction(rt.transactionId, session?.meterCurrentWh ?? 0, reason)
       .catch(() => undefined);
-    await conn
-      ?.statusNotification(rt.connectorId, OcppConnectorStatus.Finishing)
-      .catch(() => undefined);
 
-    const timer = setTimeout(
-      () => void this.finishConnector(key, rt.chargePointId, rt.connectorId),
-      FINISHING_MS,
-    );
-    this.transitions.set(key, { timer, phase: 'finishing' });
+    // A remote stop ends the OCPP transaction, but does not imply that the
+    // EV was unplugged. Keep the physical connection represented as Preparing
+    // until the simulator explicitly receives an unplug action.
+    if (reason === 'Remote' && cp && connector) {
+      connector.status = OcppConnectorStatus.Preparing;
+      // Keep currentSessionId/carId so reconnects and unplug() can see the EV.
+      await this.chargePoints.save(cp);
+      await conn
+        ?.statusNotification(rt.connectorId, OcppConnectorStatus.Preparing)
+        .catch(() => undefined);
+      this.emitConnector(
+        rt.chargePointId,
+        rt.connectorId,
+        connector.status,
+        connector.totalEnergyWh,
+      );
+    } else {
+      await conn
+        ?.statusNotification(rt.connectorId, OcppConnectorStatus.Finishing)
+        .catch(() => undefined);
+      const timer = setTimeout(
+        () => void this.finishConnector(key, rt.chargePointId, rt.connectorId),
+        FINISHING_MS,
+      );
+      this.transitions.set(key, { timer, phase: 'finishing' });
+    }
 
     this.events.emit(ENGINE_EVENTS.sessionEnded, {
       sessionId: rt.sessionId,

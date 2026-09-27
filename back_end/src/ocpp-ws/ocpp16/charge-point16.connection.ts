@@ -202,9 +202,11 @@ export class ChargePoint16Connection extends EventEmitter {
           ? conf.interval
           : Number(this.params.configuration.HeartbeatInterval ?? 60);
       this.startHeartbeat(interval);
-      for (const connectorId of this.params.connectorIds) {
-        await this.statusNotification(connectorId, 'Available');
-      }
+      // Connector state is owned by the simulation/CSMS state. Do not reset
+      // every connector to Available on reconnect; the EV may still be plugged in.
+      // for (const connectorId of this.params.connectorIds) {
+      //   await this.statusNotification(connectorId, 'Available');
+      // }
       this.emit('boot');
     } catch (err) {
       this.emit('error', err);
