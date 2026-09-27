@@ -328,12 +328,12 @@ export class ChargePoint16Connection extends EventEmitter {
     });
 
     this.rpc.handle('ReserveNow', (p) => {
-      this.emit('reserveNow', p as ReserveNowReq);
+      this.emit('reserveNow', p); // as ReserveNowReq);
       return { status: 'Accepted' };
     });
 
     this.rpc.handle('CancelReservation', (p) => {
-      this.emit('cancelReservation', p as CancelReservationReq);
+      this.emit('cancelReservation', p); // as CancelReservationReq);
       return { status: 'Accepted' };
     });
 
@@ -357,7 +357,7 @@ export class ChargePoint16Connection extends EventEmitter {
     });
 
     this.rpc.handle('UpdateFirmware', (p) => {
-      this.emit('updateFirmware', p as UpdateFirmwareReq);
+      this.emit('updateFirmware', p); // as UpdateFirmwareReq);
       setTimeout(() => {
         void this.firmwareStatusNotification('Downloading').catch(
           () => undefined,
